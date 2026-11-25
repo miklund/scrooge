@@ -96,11 +96,13 @@ The current addon is a probe for finding out what the WoW Forever client support
 
 | Button | What it tests |
 | --- | --- |
-| Environment | Client build, which AH APIs exist, and whether `GetItemInfo` returns a vendor price (tested on Linen Cloth, expected 13c) |
-| Scan 1 page | A single `QueryAuctionItems` and how the results look |
-| Full scan | Paged scan with throttling; reports pages, auctions, time, and how many auctions have `minBid` below vendor price |
-| GetAll scan | Whether the one-shot "get all" query is allowed (can freeze the client briefly) |
-| Dump 10 auctions | Raw `GetAuctionItemInfo` return values plus parsed fields and vendor price |
-| Tooltip probe | Lines of the AH tooltip, to see if the vendor price shows up there |
+| Environment | Client build, which `C_AuctionHouse` functions and events exist, and the vendor price lookup (Linen Cloth, expected 13c) |
+| Replicate scan | `C_AuctionHouse.ReplicateItems()`, the "get all" scan; reads every auction with bid data and prints the top 10 by profit (vendor value minus next bid) |
+| Browse 1 page | `SendBrowseQuery`; shows per-item results (min price and quantity only, no per-auction bids) |
+| Rank results | Re-ranks the last scan, useful after item data has been cached |
+| Dump 10 auctions | Raw `GetReplicateItemInfo` return values plus parsed fields and vendor price |
+| Frame check | Whether the AH frame and `AUCTION_HOUSE_SHOW` event are detected |
+
+The client uses the modern `C_AuctionHouse` API (not `QueryAuctionItems`/`GetAuctionItemInfo`), and `GetItemInfo` is `C_Item.GetItemInfo`.
 
 Output is shown in the window and also saved to `WTF/Account/<ACCOUNT>/SavedVariables/Scrooge.lua` (written on logout or `/reload`). Send back that file or copy the window text.
