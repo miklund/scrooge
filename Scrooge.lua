@@ -352,6 +352,7 @@ ev:SetScript("OnEvent", function(self, e, a1)
     buildUI()
     registerProbeEvents()
     log("Scrooge loaded. Type /scrooge to open the probe window.")
+    print("Scrooge 0.0.2 loaded. Type /scrooge.")
     return
   end
   if not noisy[e] then log("Event fired: " .. e) end
