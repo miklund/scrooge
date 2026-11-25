@@ -48,11 +48,17 @@ local function itemIdFromLink(link)
   return id
 end
 
--- Vendor sell price: 11th return of GetItemInfo on Classic 1.13+; may be absent on 1.12.
+-- GetItemInfo moved to C_Item on modern clients; the sell price is the 11th return.
+local function itemInfo(link)
+  if C_Item and C_Item.GetItemInfo then return { C_Item.GetItemInfo(link) } end
+  if GetItemInfo then return { GetItemInfo(link) } end
+  return nil
+end
+
 local function vendorPrice(link)
-  if not link or not GetItemInfo then return nil end
-  local t = { GetItemInfo(link) }
-  return t[11]
+  if not link then return nil end
+  local t = itemInfo(link)
+  return t and t[11]
 end
 
 -- Returns a table with named fields; detects which return layout the client uses.
@@ -91,6 +97,7 @@ local function probeEnvironment()
   log("QueryAuctionItems: " .. has(QueryAuctionItems))
   log("CanSendAuctionQuery: " .. has(CanSendAuctionQuery))
   log("GetNumAuctionItems: " .. has(GetNumAuctionItems))
+  log("GetItemInfo (global): " .. has(GetItemInfo))
   log("GetAuctionItemInfo: " .. has(GetAuctionItemInfo))
   log("GetAuctionItemLink: " .. has(GetAuctionItemLink))
   log("GetAuctionItemTimeLeft: " .. has(GetAuctionItemTimeLeft))
@@ -117,7 +124,8 @@ local function probeEnvironment()
 
   -- Linen Cloth (id 2589) vendors for 13 copper; shows whether GetItemInfo returns a price.
   log("--- GetItemInfo(2589) (Linen Cloth, expect sellPrice 13) ---")
-  local t = { GetItemInfo("item:2589:0:0:0") }
+  local t = itemInfo("item:2589:0:0:0")
+  if not t then log("No GetItemInfo / C_Item.GetItemInfo available"); return end
   for i = 1, 12 do log("  [" .. i .. "] " .. tostring(t[i])) end
   log("sellPrice at [11]: " .. tostring(t[11]))
 end
@@ -258,7 +266,10 @@ local function makeButton(label, x, y, onClick)
   b:SetHeight(24)
   b:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", x, y)
   b:SetText(label)
-  b:SetScript("OnClick", onClick)
+  b:SetScript("OnClick", function()
+    local ok, err = pcall(onClick)
+    if not ok then log("ERROR: " .. tostring(err)) end
+  end)
   return b
 end
 
@@ -352,7 +363,7 @@ ev:SetScript("OnEvent", function(self, e, a1)
     buildUI()
     registerProbeEvents()
     log("Scrooge loaded. Type /scrooge to open the probe window.")
-    print("Scrooge 0.0.3 loaded. Type /scrooge.")
+    print("Scrooge 0.0.4 loaded. Type /scrooge.")
     return
   end
   if not noisy[e] then log("Event fired: " .. e) end
