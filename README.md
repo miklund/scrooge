@@ -111,7 +111,7 @@ How a scan works:
 1. A browse query for all items, then more results are requested until the list is complete.
 2. Vendor prices are looked up for every item. Items without a known vendor price (not cached, or unsellable) are skipped.
 3. Commodities are compared directly from the browse result's lowest unit price.
-4. Every other item is searched for its individual auctions (throttled, one at a time), highest vendor price first. By default at most 300 items are searched per scan; change this with `/scrooge max <number>`.
+4. Every other item is searched for its individual auctions (throttled, one at a time), lowest price relative to vendor price first (the likeliest deals). By default at most 1000 items are searched per scan; change this with `/scrooge max <number>`.
 
 Prices: on this client `minBid`, `bidAmount` and `buyoutAmount` are **per item**, even for stacks (a stack of 6 shows the same price as a single item). The lists show price and vendor value per item, and profit is the per-item margin times the stack size. The bid assumption is not yet confirmed; the first stacked auction of a scan is written to the Debug log as `Stack sample`.
 

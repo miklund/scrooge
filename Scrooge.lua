@@ -238,7 +238,7 @@ local vendorCache = {}
 local refreshAll
 
 local function maxSearches()
-  return (ScroogeDB and ScroogeDB.maxSearches) or 300
+  return (ScroogeDB and ScroogeDB.maxSearches) or 1000
 end
 
 local function vendorById(id)
@@ -333,14 +333,17 @@ local function buildQueue()
             price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-" })
         end
       else
-        queue[#queue + 1] = { key = key, id = id, vendor = vendor }
+        queue[#queue + 1] = { key = key, id = id, vendor = vendor, ratio = (r.minPrice or 0) / vendor }
       end
     else
       ds.skipped = ds.skipped + 1
     end
   end
-  -- Highest vendor value first: the biggest potential margins are searched before the cap.
-  table.sort(queue, function(a, b) return a.vendor > b.vendor end)
+  -- Lowest price relative to vendor value first, so the likeliest deals are searched before the cap.
+  table.sort(queue, function(a, b)
+    if a.ratio ~= b.ratio then return a.ratio < b.ratio end
+    return a.vendor > b.vendor
+  end)
   local total = #queue
   while #queue > maxSearches() do queue[#queue] = nil end
   ds.queue = queue
@@ -748,7 +751,7 @@ ev:SetScript("OnEvent", function(self, e, a1)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.1.1 loaded. Type /scrooge.")
+    print("Scrooge 0.1.2 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_SHOW" then ahShown = true
