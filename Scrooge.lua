@@ -141,7 +141,7 @@ local function rank(topN)
     local vendor = vendorPrice(link)
     local cost = nextBid(a)
     if vendor and cost and a.count then
-      local profit = vendor * a.count - cost
+      local profit = (vendor - cost) * a.count
       rows[table.getn(rows) + 1] = { a = a, profit = profit, vendor = vendor, cost = cost }
     else
       unknown = unknown + 1
@@ -330,7 +330,7 @@ local function buildQueue()
         local unit = r.minPrice
         if unit and unit > 0 and unit < vendor then
           addDeal("buyout", { itemId = id, qty = 1, qtyText = "each (" .. tostring(r.totalQuantity) .. ")",
-            price = unit, vendorTotal = vendor, profit = vendor - unit, timeLeft = "-" })
+            price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-" })
         end
       else
         queue[#queue + 1] = { key = key, id = id, vendor = vendor }
@@ -366,18 +366,24 @@ local function processItemResults()
     local r = C_AuctionHouse.GetItemSearchResultInfo(key, i)
     if r and not r.containsOwnerItem then
       local qty = r.quantity or 1
-      local vendorTotal = entry.vendor * qty
+      -- minBid, bidAmount and buyoutAmount are per item on this client, even for stacks.
+      local vendor = entry.vendor
       local minBid, bidAmt, buyout = r.minBid or 0, r.bidAmount or 0, r.buyoutAmount or 0
       local cost = minBid
       if bidAmt > 0 then cost = bidAmt + math.max(1, math.floor(bidAmt * BID_INCREMENT)) end
       local left = fmtTimeLeft(r)
-      if cost > 0 and cost < vendorTotal and (buyout == 0 or cost < buyout) then
-        addDeal("bid", { itemId = entry.id, link = r.itemLink, qty = qty, price = cost,
-          vendorTotal = vendorTotal, profit = vendorTotal - cost, timeLeft = left, auctionId = r.auctionID })
+      if qty > 1 and not ds.loggedStack then
+        ds.loggedStack = true
+        log("Stack sample: item " .. entry.id .. " qty=" .. qty .. " minBid=" .. minBid .. " bidAmount=" ..
+          bidAmt .. " buyout=" .. buyout .. " vendor each=" .. vendor)
       end
-      if buyout > 0 and buyout < vendorTotal then
+      if cost > 0 and cost < vendor and (buyout == 0 or cost < buyout) then
+        addDeal("bid", { itemId = entry.id, link = r.itemLink, qty = qty, price = cost,
+          vendorEach = vendor, profit = (vendor - cost) * qty, timeLeft = left, auctionId = r.auctionID })
+      end
+      if buyout > 0 and buyout < vendor then
         addDeal("buyout", { itemId = entry.id, link = r.itemLink, qty = qty, price = buyout,
-          vendorTotal = vendorTotal, profit = vendorTotal - buyout, timeLeft = left, auctionId = r.auctionID })
+          vendorEach = vendor, profit = (vendor - buyout) * qty, timeLeft = left, auctionId = r.auctionID })
       end
     end
   end
@@ -405,7 +411,7 @@ local function onCommodityResults(id)
   local info = C_AuctionHouse.GetCommoditySearchResultInfo(id, 1)
   if info and info.unitPrice and info.unitPrice < cur.entry.vendor then
     addDeal("buyout", { itemId = id, qty = 1, qtyText = "each", price = info.unitPrice,
-      vendorTotal = cur.entry.vendor, profit = cur.entry.vendor - info.unitPrice, timeLeft = "-" })
+      vendorEach = cur.entry.vendor, profit = cur.entry.vendor - info.unitPrice, timeLeft = "-" })
   end
   ds.cur = nil
   ds.searched = ds.searched + 1
@@ -541,9 +547,9 @@ local ROW_H = 18
 local COLS = {
   { key = "name", w = 200, label = "Item" },
   { key = "qty", w = 80, label = "Qty" },
-  { key = "price", w = 100, label = "Price" },
-  { key = "vendor", w = 100, label = "Vendor" },
-  { key = "profit", w = 100, label = "Profit" },
+  { key = "price", w = 100, label = "Price each" },
+  { key = "vendor", w = 100, label = "Vendor each" },
+  { key = "profit", w = 100, label = "Total profit" },
   { key = "left", w = 50, label = "Left" },
 }
 
@@ -625,7 +631,7 @@ local function refreshList(list)
     row.cols.name:SetText(rowName(d))
     row.cols.qty:SetText(d.qtyText or ("x" .. d.qty))
     row.cols.price:SetText(coin(d.price))
-    row.cols.vendor:SetText(coin(d.vendorTotal))
+    row.cols.vendor:SetText(coin(d.vendorEach))
     row.cols.profit:SetText(coin(d.profit))
     row.cols.left:SetText(d.timeLeft or "")
     row:Show()
@@ -742,7 +748,7 @@ ev:SetScript("OnEvent", function(self, e, a1)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.1.0 loaded. Type /scrooge.")
+    print("Scrooge 0.1.1 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_SHOW" then ahShown = true

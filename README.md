@@ -113,7 +113,9 @@ How a scan works:
 3. Commodities are compared directly from the browse result's lowest unit price.
 4. Every other item is searched for its individual auctions (throttled, one at a time), highest vendor price first. By default at most 300 items are searched per scan; change this with `/scrooge max <number>`.
 
-Caveats: this has not been run against the real server yet. The 5% minimum bid increment is the retail rule and is an assumption. Your own auctions are ignored.
+Prices: on this client `minBid`, `bidAmount` and `buyoutAmount` are **per item**, even for stacks (a stack of 6 shows the same price as a single item). The lists show price and vendor value per item, and profit is the per-item margin times the stack size. The bid assumption is not yet confirmed; the first stacked auction of a scan is written to the Debug log as `Stack sample`.
+
+Caveats: The 5% minimum bid increment is the retail rule and is an assumption. Your own auctions are ignored.
 
 ## Installation
 
