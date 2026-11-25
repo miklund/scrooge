@@ -82,32 +82,46 @@ The probe addon was run in the game client (Interface `16001`) at the Stormwind 
 
 Reference: <https://www.curseforge.com/wow/addons/auctionator>
 
-## Planned structure
+## Structure
 
 ```
 (repo root = addon folder)
   Scrooge.toc      -- addon manifest
-  Scanner.lua      -- AH scan with throttling and paging
-  Vendor.lua       -- vendor price lookup and caching
-  Ranking.lua      -- profit calculation and sorting
-  UI.lua           -- results window anchored to the AH frame
+  Scrooge.lua      -- deal scanner, main window and debug tab (single file for now)
 ```
 
 ## Roadmap
 
-1. Skeleton addon (`.toc`, slash command `/scrooge`).
-2. Scanner that dumps all auctions to a table.
-3. Vendor price lookup and profit calculation, printed to chat.
-4. Results window with sorting and filters.
-5. One-click bid on a selected row.
+1. ~~Skeleton addon (`.toc`, slash command `/scrooge`).~~
+2. ~~Probe the client's AH API (debug tab).~~
+3. ~~Deal scanner and results window (bid deals and buyout deals).~~ Untested in-game.
+4. Verify the scanner against the real server (throttle, per-item search data, commodity detection) and tune.
+5. Filters (minimum profit, budget, time left) and one-click bid on a selected row.
+
+## Usage
+
+`/scrooge` opens the main window. Open the auction house, press **Scan AH**, and wait. Two tabs show the results, sorted by profit (vendor value minus price):
+
+- **Bid deals:** non-commodity auctions where the next bid (the minimum bid, or the current bid plus 5%) is below the vendor value, and below the buyout. Shows the time left, since you have to wait for the auction to end.
+- **Buyout deals:** auctions where the buyout is below the vendor value. Commodities (stackable goods sold by unit price) have no bids, so they only show up here, using the lowest unit price.
+- **Debug:** the API probe buttons (see below). `/scrooge debug` opens this tab directly.
+
+How a scan works:
+
+1. A browse query for all items, then more results are requested until the list is complete.
+2. Vendor prices are looked up for every item. Items without a known vendor price (not cached, or unsellable) are skipped.
+3. Commodities are compared directly from the browse result's lowest unit price.
+4. Every other item is searched for its individual auctions (throttled, one at a time), highest vendor price first. By default at most 300 items are searched per scan; change this with `/scrooge max <number>`.
+
+Caveats: this has not been run against the real server yet. The 5% minimum bid increment is the retail rule and is an assumption. Your own auctions are ignored.
 
 ## Installation
 
 Copy this repository's contents into a folder named `Scrooge` at `World of Warcraft/_classic_/Interface/AddOns/Scrooge/` and restart or `/reload`. The client is Interface `16001` (same as the HealerStats addon).
 
-## Probe build (current state)
+## Debug tab (API probe)
 
-The current addon is a probe for finding out what the WoW Forever client supports. Type `/scrooge` to open the window and use it with the auction house open:
+The debug tab is the probe used for finding out what the WoW Forever client supports. Use it with the auction house open:
 
 | Button | What it tests |
 | --- | --- |
