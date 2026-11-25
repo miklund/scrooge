@@ -70,7 +70,7 @@ Reference: <https://www.curseforge.com/wow/addons/auctionator>
 ## Planned structure
 
 ```
-Scrooge/
+(repo root = addon folder)
   Scrooge.toc      -- addon manifest
   Scanner.lua      -- AH scan with throttling and paging
   Vendor.lua       -- vendor price lookup and caching
@@ -88,7 +88,7 @@ Scrooge/
 
 ## Installation
 
-Copy the `Scrooge` folder to `World of Warcraft/_classic_/Interface/AddOns/` and restart or `/reload`. The client is Interface `16001` (same as the HealerStats addon).
+Copy this repository's contents into a folder named `Scrooge` at `World of Warcraft/_classic_/Interface/AddOns/Scrooge/` and restart or `/reload`. The client is Interface `16001` (same as the HealerStats addon).
 
 ## Probe build (current state)
 
