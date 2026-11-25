@@ -345,14 +345,14 @@ local noisy = { GET_ITEM_INFO_RECEIVED = true }
 
 ev:SetScript("OnEvent", function(self, e, a1)
   if e == "ADDON_LOADED" then
-    if a1 ~= "Scrooge" then return end
+    if not a1 or string.lower(a1) ~= "scrooge" then return end
     if type(ScroogeLog) ~= "table" then ScroogeLog = {} end
     nlog = 0
     while ScroogeLog[nlog + 1] do nlog = nlog + 1 end
     buildUI()
     registerProbeEvents()
     log("Scrooge loaded. Type /scrooge to open the probe window.")
-    print("Scrooge 0.0.2 loaded. Type /scrooge.")
+    print("Scrooge 0.0.3 loaded. Type /scrooge.")
     return
   end
   if not noisy[e] then log("Event fired: " .. e) end
@@ -365,5 +365,6 @@ ev:SetScript("OnUpdate", onUpdate)
 
 SLASH_SCROOGE1 = "/scrooge"
 SlashCmdList["SCROOGE"] = function()
+  if not ui.frame then print("Scrooge: UI not built yet"); return end
   if ui.frame:IsVisible() then ui.frame:Hide() else ui.frame:Show() end
 end

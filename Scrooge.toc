@@ -2,7 +2,7 @@
 ## Title: Scrooge
 ## Notes: Finds auctions where the minimum bid is below the vendor price (probe build)
 ## Author: miklund
-## Version: 0.0.2
+## Version: 0.0.3
 ## SavedVariables: ScroogeLog
 
 Scrooge.lua
