@@ -17,13 +17,13 @@ The hard part is finding the auctions with the best margin. Scrooge does that:
 
 ## Requirements
 
-- WoW Classic client, Interface `16001` (`_classic_` folder), as used on WoW Forever.
+- WoW Classic client, Interface `16001` (`_classic_` folder), as used on WoW Forever. It uses the modern `C_AuctionHouse` API.
 - Access to the auction house (the addon can only scan while the AH window is open).
 - Addon is written in Lua with the standard WoW addon API; no external dependencies are required.
 
 ### Functional requirements
 
-- Scan the auction house (full or paged scan, respecting the server's query throttle).
+- Scan the auction house (browse query for candidates, then per-item search for individual auctions, respecting the server's query throttle).
 - Resolve the vendor sell price per item.
 - Rank auctions by absolute profit and by percentage profit.
 - Display the ranked list in a window next to the AH frame.
@@ -36,34 +36,49 @@ The hard part is finding the auctions with the best margin. Scrooge does that:
 - Your bid money is locked until you are outbid or the auction ends.
 - Auctions with a short time left are the most practical to bid on, since the wait is short.
 
-## Feasibility (initial research)
+## What we learned (probe results from the WoW Forever client)
 
-These answers come from knowledge of the Classic AH API and Auctionator, not from running code yet. Items marked *verify* need confirming in-game on WoW Forever.
+The probe addon was run in the game client (Interface `16001`) at the Stormwind auction house. Initial assumptions were based on the legacy Classic API; the probe showed that is wrong for this client.
 
-### 1. Is this possible?
+### The client uses the modern `C_AuctionHouse` API
 
-Yes. The required data is available to addons:
+- The legacy scan API (`QueryAuctionItems`, `GetAuctionItemInfo`, `GetNumAuctionItems`) is **not available**, and the legacy event `AUCTION_ITEM_LIST_UPDATE` is **unknown** (registering it raises an error).
+- The AH window is `AuctionHouseFrame`. `AuctionFrame` does not exist, so "is the AH open" must be checked with `AuctionHouseFrame:IsShown()` or by tracking `AUCTION_HOUSE_SHOW` / `AUCTION_HOUSE_CLOSED` (the event flag worked).
+- All of these exist: `C_AuctionHouse.SendBrowseQuery`, `GetBrowseResults`, `ReplicateItems`, `GetNumReplicateItems`, `GetReplicateItemInfo`, `GetReplicateItemLink`, `GetReplicateItemTimeLeft`, `SendSearchQuery`, `GetNumItemSearchResults`, `GetItemSearchResultInfo`, `PlaceBid`, `GetBidInfo`, `IsThrottledMessageSystemReady`, `GetItemCommodityStatus`.
+- Events that exist: `AUCTION_HOUSE_SHOW`, `AUCTION_HOUSE_CLOSED`, `REPLICATE_ITEM_LIST_UPDATE`, `AUCTION_HOUSE_BROWSE_RESULTS_UPDATED`, `ITEM_SEARCH_RESULTS_UPDATED`, `COMMODITY_SEARCH_RESULTS_UPDATED`, `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, `AUCTION_MULTISELL_UPDATE`.
+- Addon load details: the `ADDON_LOADED` argument is the **folder name** and may differ in case from the addon name (here `scrooge`), so compare case-insensitively. `BackdropTemplate` is needed for `SetBackdrop`.
 
-- `QueryAuctionItems(...)` triggers a scan; `CanSendAuctionQuery()` tells whether a query may be sent (queries are throttled). Results arrive via the `AUCTION_ITEM_LIST_UPDATE` event.
-- `GetNumAuctionItems("list")` and `GetAuctionItemInfo("list", index)` return item name, count, `minBid`, `minIncrement`, `buyoutPrice`, `bidAmount` (current bid), `highBidder`, `owner`, and `itemId`. `GetAuctionItemLink` gives the link and `GetAuctionItemTimeLeft` the remaining time.
-- `GetItemInfo(itemId)` returns the vendor sell price (`sellPrice`). The default UI tooltips show the same value. It may return `nil` until the item is cached, so lookups must be retried on `GET_ITEM_INFO_RECEIVED`.
-- `PlaceAuctionBid("list", index, amount)` can place the bid. This is protected only in the sense that it needs a hardware event, which is fine for a click.
+### Vendor price works
 
-Details to *verify* on WoW Forever: whether the "getAll" scan (`QueryAuctionItems` with `getAll = true`) is allowed and how often, and the exact `GetAuctionItemInfo` return order for this client build.
+- `GetItemInfo` is not a global; use `C_Item.GetItemInfo(link or "item:<id>")`. The sell price is the **11th** return value (Linen Cloth returns 13 copper as expected).
+- It returns `nil` for items that are not cached. After the browse query the first results gave `vendor=nil`. We must request item data (`C_Item.RequestLoadItemDataByID`) and re-rank after `GET_ITEM_INFO_RECEIVED`. The **Rank results** button does this by hand.
 
-### 2. Can we use Auctionator's database?
+### Browse queries work but only give per-item data
 
-Not for this purpose. Auctionator stores aggregated prices per item (the lowest **buyout** price seen, in its SavedVariables), not the per-auction **bid** values we need. Its saved data is also only written to disk on logout or `/reload`, although other addons can read its in-memory globals while the game runs. It also only has the latest snapshot per item, with no per-auction bid, count, or time left.
+- `SendBrowseQuery({ searchString = "", sorts = {}, filters = {}, itemClassFilters = {} })` returned **500** results via `AUCTION_HOUSE_BROWSE_RESULTS_UPDATED`. Each result has `itemKey.itemID`, `minPrice` and `totalQuantity`.
+- That is the cheapest price per item, **not individual auctions with their bids**, so it cannot be used for the bid strategy on its own. It is still useful as a cheap first filter (items whose `minPrice` is below the vendor price).
+- The browse list in the default UI is the retail-style layout: items are grouped, with a price and an "Available" count. Fish, cloth and other stackable goods appear to be **commodities**, which are sold by unit price without bids. The bid strategy likely only works for non-commodity items (equipment such as the chain mail leggings), which use `GetItemSearchResultInfo` / `SendSearchQuery` with an item key.
+- `AUCTION_HOUSE_THROTTLED_SYSTEM_READY` fires after a query, so queries are throttled and the next one should wait for it (or `IsThrottledMessageSystemReady()`).
 
-Conclusion: Scrooge has to do its own scan.
+### Replicate scan: not yet working
 
-### 3. Can we reuse Auctionator's scanning code?
+- `C_AuctionHouse.GetNumReplicateItems()` returned 0 before any scan.
+- Calling `ReplicateItems()` did **not** produce a `REPLICATE_ITEM_LIST_UPDATE` event, and the scan produced no data (0 auctions stored, ranking empty). So this "get all" path is either disabled on WoW Forever, throttled, or needs more waiting or a different trigger. This is still open (see below).
 
-Probably yes, with caveats:
+### Answers to the original questions
 
-- Auctionator is open source, so its scan logic (query throttling, paging, handling of `AUCTION_ITEM_LIST_UPDATE`) can be used as a reference or reused. **Check its license on the CurseForge/GitHub page before copying code** and keep attribution if required.
-- The scanning loop itself is short (query a page, wait for the event, read results, next page), so writing our own is small and avoids a dependency on Auctionator's internals, which change between versions.
-- Alternatively, Scrooge could depend on Auctionator as a library, but this only makes sense if Auctionator exposes per-auction data, which it does not appear to.
+1. **Is this possible?** Partly confirmed. We can read the AH, get vendor prices and place bids (`PlaceBid` exists). What is not yet confirmed is getting **per-auction bid data** for all items efficiently. Candidate routes: browse query to find candidate items, then `SendSearchQuery` per item key to get individual auctions.
+2. **Can we use Auctionator's database?** No. It keeps aggregated per-item prices (lowest buyout), not per-auction bids, and only writes its saved data on logout or `/reload`. We have to do our own scan. (The Auctionator tab is installed in the AH window on this client, so it can coexist.)
+3. **Can we reuse Auctionator's scanning code?** Possibly as a reference for the modern API (browse then item search, throttling, handling uncached items). It is open source; **check its license before copying code**. Because the client uses `C_AuctionHouse`, old Classic scanning code (such as the older Auctionator scan) would not work as is.
+
+### Open questions / next steps
+
+- Why does `ReplicateItems()` give no event? Try waiting longer, check `IsThrottledMessageSystemReady()` first, and watch whether the default UI itself triggers it.
+- Per-item search: call `SendSearchQuery(itemKey, sorts, true)` for a non-commodity item, and dump `GetItemSearchResultInfo` to see if `minBid`, `bidAmount`, `buyoutAmount`, `timeLeft` and `owner` are present.
+- Check `GetItemCommodityStatus(itemKey)` to know which items are commodities (no bids) and skip them.
+- Cache item data so vendor prices are known before ranking, and rank on `GET_ITEM_INFO_RECEIVED`.
+- Measure the throttle: how many items per second can we search without being blocked.
+- Confirm in the default UI that item auctions here really expose a bid (not only buyout).
 
 Reference: <https://www.curseforge.com/wow/addons/auctionator>
 
