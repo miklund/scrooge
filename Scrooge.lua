@@ -8,6 +8,7 @@ local ui = {}
 local scan = { active = false }
 local lastAuctions = {}
 local lastCount = 0
+local registered = {}
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -96,6 +97,15 @@ local function probeEnvironment()
   log("PlaceAuctionBid: " .. has(PlaceAuctionBid))
   log("C_AuctionHouse (retail API): " .. has(C_AuctionHouse))
   log("C_Timer: " .. has(C_Timer))
+  if C_AuctionHouse then
+    local names = { "SendBrowseQuery", "SendSearchQuery", "ReplicateItems", "GetNumReplicateItems",
+      "GetReplicateItemInfo", "GetReplicateItemLink", "GetReplicateItemTimeLeft", "GetNumItemSearchResults",
+      "GetItemSearchResultInfo", "GetBrowseResults", "PlaceBid", "GetBidInfo", "IsThrottledMessageSystemReady",
+      "MakeItemKey", "GetItemKeyFromItem", "GetItemCommodityStatus" }
+    for _, n in ipairs(names) do log("  C_AuctionHouse." .. n .. ": " .. has(C_AuctionHouse[n])) end
+  end
+  if C_Item then log("C_Item.GetItemInfo: " .. has(C_Item.GetItemInfo)) end
+  for name, ok in pairs(registered) do log("Event " .. name .. ": " .. (ok and "registered" or "UNKNOWN")) end
   log("AuctionFrame visible: " .. has(ahOpen()))
   if CanSendAuctionQuery then
     local can, canAll = CanSendAuctionQuery()
@@ -314,21 +324,40 @@ end
 ----------------------------------------------------------------------
 
 local ev = CreateFrame("Frame")
-ev:RegisterEvent("VARIABLES_LOADED")
-ev:RegisterEvent("AUCTION_ITEM_LIST_UPDATE")
-ev:SetScript("OnEvent", function(self, e)
-  e = e or event
-  if e == "VARIABLES_LOADED" then
+ev:RegisterEvent("ADDON_LOADED")
+
+-- Events that may or may not exist on this client; unknown ones are skipped, not fatal.
+local probeEvents = {
+  "AUCTION_ITEM_LIST_UPDATE", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED",
+  "REPLICATE_ITEM_LIST_UPDATE", "ITEM_SEARCH_RESULTS_UPDATED",
+  "COMMODITY_SEARCH_RESULTS_UPDATED", "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED",
+  "AUCTION_MULTISELL_UPDATE", "GET_ITEM_INFO_RECEIVED",
+}
+local function registerProbeEvents()
+  for _, name in ipairs(probeEvents) do
+    local ok = pcall(ev.RegisterEvent, ev, name)
+    registered[name] = ok
+    log("Event " .. name .. ": " .. (ok and "registered" or "UNKNOWN"))
+  end
+end
+
+local noisy = { GET_ITEM_INFO_RECEIVED = true }
+
+ev:SetScript("OnEvent", function(self, e, a1)
+  if e == "ADDON_LOADED" then
+    if a1 ~= "Scrooge" then return end
     if type(ScroogeLog) ~= "table" then ScroogeLog = {} end
     nlog = 0
     while ScroogeLog[nlog + 1] do nlog = nlog + 1 end
     buildUI()
+    registerProbeEvents()
     log("Scrooge loaded. Type /scrooge to open the probe window.")
-  elseif e == "AUCTION_ITEM_LIST_UPDATE" then
-    if scan.active and scan.awaiting then
-      scan.awaiting = false
-      advanceScan()
-    end
+    return
+  end
+  if not noisy[e] then log("Event fired: " .. e) end
+  if e == "AUCTION_ITEM_LIST_UPDATE" and scan.active and scan.awaiting then
+    scan.awaiting = false
+    advanceScan()
   end
 end)
 ev:SetScript("OnUpdate", onUpdate)
