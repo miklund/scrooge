@@ -845,6 +845,7 @@ local function buildUI()
   local pauseBtn
   pauseBtn = makeButton("Pause", 125, -38, function()
     if not ds.active then return end
+    if ds.paused and not ahOpen() then setStatus("Open the auction house to resume."); return end
     ds.paused = not ds.paused
     pauseBtn:SetText(ds.paused and "Resume" or "Pause")
     if ds.paused then setStatus("Paused. Buy what you want, then press Resume.") end
@@ -910,7 +911,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.3 loaded. Type /scrooge.")
+    print("Scrooge 0.2.4 loaded. Type /scrooge.")
     return
   end
   if e == "ITEM_SEARCH_RESULTS_UPDATED" and pendingBuy then
@@ -923,7 +924,16 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     if not ds.active then setStatus("Auction house open. Old rows are re-checked when you buy.") end
   elseif e == "AUCTION_HOUSE_CLOSED" then
     ahShown = false
-    if ds.active then finishDealScan("Auction house closed") end
+    if ds.active then
+      if ds.phase == "search" then
+        if ds.cur then ds.qi = ds.qi - 1; ds.cur = nil end
+        ds.paused = true
+        if ui.pauseBtn then ui.pauseBtn:SetText("Resume") end
+        setStatus("Auction house closed. Scan paused at " .. ds.qi .. "/" .. #ds.queue .. "; reopen it and press Resume.")
+      else
+        finishDealScan("Auction house closed")
+      end
+    end
   end
   if e == "GET_ITEM_INFO_RECEIVED" then ui.dirty = true end
   if e == "COMMODITY_PRICE_UPDATED" then onCommodityPrice(a1, a2 or 0)

@@ -149,3 +149,5 @@ Click a row to select it, then use the buttons under the list:
 Bids and buyouts use `C_AuctionHouse.PlaceBid(auctionID, amount)`; auction IDs come from the last scan, so a row may fail if the auction changed. Errors are printed to chat. Untested in-game as of 0.2.0.
 
 **Pause / Resume** halts the scan after the current item search so you can buy or bid; Resume continues where it left off. Single-auction bids and buyouts also work while scanning; commodity purchases require a pause.
+
+Closing the auction house during the item-search phase pauses the scan; reopen it and press Resume to continue. Closing it earlier (browse phase) ends the scan.
