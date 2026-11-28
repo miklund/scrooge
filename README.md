@@ -151,3 +151,7 @@ Bids and buyouts use `C_AuctionHouse.PlaceBid(auctionID, amount)`; auction IDs c
 **Pause / Resume** halts the scan after the current item search so you can buy or bid; Resume continues where it left off. Single-auction bids and buyouts also work while scanning; commodity purchases require a pause.
 
 Closing the auction house during the item-search phase pauses the scan; reopen it and press Resume to continue. Closing it earlier (browse phase) ends the scan.
+
+## /scrooge sellall
+
+With a vendor window open, sells every item in your bags (backpack and 4 bag slots) that has a vendor value, including gear and consumables. There is no confirmation and no exclusion list. Items bought back via the vendor buyback tab can be recovered.

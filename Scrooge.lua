@@ -919,7 +919,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.5 loaded. Type /scrooge.")
+    print("Scrooge 0.3.0 loaded. Type /scrooge.")
     return
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
@@ -984,6 +984,27 @@ ev:SetScript("OnUpdate", function()
   end
 end)
 
+local function sellAll()
+  if not (MerchantFrame and MerchantFrame:IsShown()) then print("Scrooge: open a vendor window first"); return end
+  local C = C_Container
+  local numSlots = C.GetContainerNumSlots
+  local sold, copper = 0, 0
+  for bag = 0, 4 do
+    for slot = 1, (numSlots(bag) or 0) do
+      local info = C.GetContainerItemInfo(bag, slot)
+      if info and not info.hasNoValue then
+        local price = vendorPrice(info.hyperlink) or 0
+        if price > 0 then
+          C.UseContainerItem(bag, slot)
+          sold = sold + 1
+          copper = copper + price * (info.stackCount or 1)
+        end
+      end
+    end
+  end
+  print("Scrooge: sold " .. sold .. " stacks for about " .. coin(copper))
+end
+
 SLASH_SCROOGE1 = "/scrooge"
 SlashCmdList["SCROOGE"] = function(msg)
   if not ui.frame then print("Scrooge: UI not built yet"); return end
@@ -994,6 +1015,7 @@ SlashCmdList["SCROOGE"] = function(msg)
     print("Scrooge: will search at most " .. n .. " items per scan")
     return
   end
+  if msg == "sellall" then sellAll(); return end
   if msg == "debug" then
     ui.frame:Show()
     ui.selectTab(3)
