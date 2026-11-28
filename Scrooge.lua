@@ -10,6 +10,7 @@ local auctions = {}
 local ahShown = false
 local ahSession = 0
 local pendingBuy
+local lastPlace
 local registered = {}
 
 ----------------------------------------------------------------------
@@ -608,9 +609,16 @@ local function searchInAH(d)
   if ok then print("Scrooge: searching for " .. name) else print("Scrooge: could not drive the auction house search for " .. name) end
 end
 
+local placeQueue = {}
+
 local function placeDeal(kind, d)
   local what, amount = "Buy out", d.price
   if kind == "bid" then what, amount = "Bid on", d.minBidNext or d.price end
+  if not throttleReady() then
+    placeQueue[#placeQueue + 1] = { kind = kind, d = d }
+    return
+  end
+  lastPlace = GetTime()
   C_AuctionHouse.PlaceBid(d.auctionId, amount)
   removeDeal(kind, d)
   print("Scrooge: " .. what:lower() .. " sent for " .. rowName(d) .. " x" .. d.qty .. " at " .. coin(amount))
@@ -891,7 +899,7 @@ local probeEvents = {
   "ITEM_SEARCH_RESULTS_UPDATED", "COMMODITY_SEARCH_RESULTS_UPDATED",
   "AUCTION_HOUSE_THROTTLED_SYSTEM_READY", "GET_ITEM_INFO_RECEIVED",
   "COMMODITY_PRICE_UPDATED", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED",
-  "AUCTION_HOUSE_SHOW_ERROR",
+  "AUCTION_HOUSE_SHOW_ERROR", "UI_ERROR_MESSAGE",
 }
 
 local noisy = {
@@ -911,9 +919,10 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.4 loaded. Type /scrooge.")
+    print("Scrooge 0.2.5 loaded. Type /scrooge.")
     return
   end
+  if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
   if e == "ITEM_SEARCH_RESULTS_UPDATED" and pendingBuy then
     local ok, err = pcall(onRecheckResults, a1)
     if not ok then log("ERROR: " .. tostring(err)); pendingBuy = nil end
@@ -956,6 +965,10 @@ end)
 
 ev:SetScript("OnUpdate", function()
   onUpdate()
+  if placeQueue[1] and throttleReady() then
+    local q = table.remove(placeQueue, 1)
+    placeDeal(q.kind, q.d)
+  end
   if ds.active then
     local ok, err = pcall(dsTick)
     if not ok then
