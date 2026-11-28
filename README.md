@@ -137,3 +137,13 @@ The debug tab is the probe used for finding out what the WoW Forever client supp
 The client uses the modern `C_AuctionHouse` API (not `QueryAuctionItems`/`GetAuctionItemInfo`), and `GetItemInfo` is `C_Item.GetItemInfo`.
 
 Output is shown in the window and also saved to `WTF/Account/<ACCOUNT>/SavedVariables/Scrooge.lua` (written on logout or `/reload`). Send back that file or copy the window text.
+
+## Buying from Scrooge
+
+Click a row to select it, then use the buttons under the list:
+
+- **Bid / Buyout** places the bid (next minimum bid) or buys out that exact auction after a confirmation popup, then removes the row. Commodity rows (no single auction) buy 1 unit via the commodity purchase flow and are cancelled if the price is no longer below vendor.
+- **Find in AH** (or shift-click the row) fills the auction house search box with the item name and searches.
+- **Done** removes the row without buying.
+
+Bids and buyouts use `C_AuctionHouse.PlaceBid(auctionID, amount)`; auction IDs come from the last scan, so a row may fail if the auction changed. Errors are printed to chat. Untested in-game as of 0.2.0.

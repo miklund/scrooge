@@ -330,7 +330,7 @@ local function buildQueue()
         local unit = r.minPrice
         if unit and unit > 0 and unit < vendor then
           addDeal("buyout", { itemId = id, qty = 1, qtyText = "each (" .. tostring(r.totalQuantity) .. ")",
-            price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-" })
+            price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-", commodity = true })
         end
       else
         queue[#queue + 1] = { key = key, id = id, vendor = vendor, ratio = (r.minPrice or 0) / vendor }
@@ -568,6 +568,97 @@ local function rowName(row)
   return "item:" .. row.itemId
 end
 
+local function plainName(d)
+  return (rowName(d):match("%[(.-)%]")) or rowName(d)
+end
+
+local function removeDeal(kind, d)
+  local list = deals[kind]
+  for i = 1, #list do
+    if list[i] == d then table.remove(list, i); break end
+  end
+  ui.dirty = true
+end
+
+local function searchInAH(d)
+  if not ahOpen() then print("Scrooge: open the auction house first"); return end
+  local name = plainName(d)
+  local f = AuctionHouseFrame
+  local ok = f and f.SearchBar and f.SearchBar.SearchBox and pcall(function()
+    if f.SetDisplayMode and AuctionHouseFrameDisplayMode then f:SetDisplayMode(AuctionHouseFrameDisplayMode.Buy) end
+    f.SearchBar.SearchBox:SetText(name)
+    f.SearchBar:StartSearch()
+  end)
+  if ok then print("Scrooge: searching for " .. name) else print("Scrooge: could not drive the auction house search for " .. name) end
+end
+
+local pending
+
+StaticPopupDialogs["SCROOGE_CONFIRM"] = {
+  text = "%s",
+  button1 = "Yes",
+  button2 = "Cancel",
+  timeout = 0,
+  whileDead = true,
+  hideOnEscape = true,
+  OnAccept = function() if pending then local f = pending; pending = nil; f() end end,
+  OnCancel = function()
+    pending = nil
+    if C_AuctionHouse.CancelCommoditiesPurchase and ds.commodity then pcall(C_AuctionHouse.CancelCommoditiesPurchase) end
+    ds.commodity = nil
+  end,
+}
+
+local function confirm(text, fn)
+  pending = fn
+  StaticPopup_Show("SCROOGE_CONFIRM", text)
+end
+
+local function buyDeal(kind, d)
+  if not ahOpen() then print("Scrooge: open the auction house first"); return end
+  if ds.active then print("Scrooge: wait for the scan to finish"); return end
+  local name = rowName(d)
+  if d.commodity then
+    ds.commodity = { kind = kind, d = d }
+    C_AuctionHouse.StartCommoditiesPurchase(d.itemId, 1)
+    return
+  end
+  if not d.auctionId then print("Scrooge: no auction id for this row"); return end
+  local what, amount
+  if kind == "buyout" then
+    what, amount = "Buy out", d.price
+  else
+    what, amount = "Bid on", d.minBidNext or d.price
+  end
+  confirm(what .. " " .. name .. " x" .. d.qty .. " for " .. coin(amount) .. "?\nVendor value each: " .. coin(d.vendorEach), function()
+    C_AuctionHouse.PlaceBid(d.auctionId, amount)
+    removeDeal(kind, d)
+    print("Scrooge: " .. what:lower() .. " sent for " .. name .. " at " .. coin(amount))
+  end)
+end
+
+local function onCommodityPrice(unitPrice, totalPrice)
+  local c = ds.commodity
+  if not c then return end
+  local d = c.d
+  if unitPrice >= d.vendorEach then
+    print("Scrooge: price is now " .. coin(unitPrice) .. ", no longer below vendor price. Cancelled.")
+    pcall(C_AuctionHouse.CancelCommoditiesPurchase)
+    ds.commodity = nil
+    return
+  end
+  confirm("Buy 1 x " .. rowName(d) .. " for " .. coin(totalPrice) .. "?\nVendor value: " .. coin(d.vendorEach), function()
+    C_AuctionHouse.ConfirmCommoditiesPurchase(d.itemId, 1)
+  end)
+end
+
+local function onCommodityDone(ok)
+  local c = ds.commodity
+  if not c then return end
+  ds.commodity = nil
+  if ok then print("Scrooge: bought 1 x " .. rowName(c.d)) else print("Scrooge: purchase failed") end
+end
+
 local function createList(parent, kind, emptyText)
   local list = { kind = kind, rows = {} }
   local x = 0
@@ -581,7 +672,25 @@ local function createList(parent, kind, emptyText)
   end
   local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
   sf:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -20)
-  sf:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -26, 0)
+  sf:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -26, 28)
+  local function mkBtn(text, x, w, fn)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(w, 22)
+    b:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", x, 2)
+    b:SetText(text)
+    b:SetScript("OnClick", function()
+      local d = list.selected
+      if not d then print("Scrooge: select a row first"); return end
+      fn(d)
+    end)
+    return b
+  end
+  mkBtn(kind == "buyout" and "Buyout" or "Bid", 0, 90, function(d) buyDeal(kind, d) end)
+  mkBtn("Find in AH", 95, 90, searchInAH)
+  mkBtn("Done", 190, 70, function(d) list.selected = nil; removeDeal(kind, d) end)
+  local hint = parent:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  hint:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 270, 8)
+  hint:SetText("Click a row to select, shift-click to find it in the AH")
   local content = CreateFrame("Frame", nil, sf)
   content:SetWidth(630)
   content:SetHeight(1)
@@ -620,6 +729,15 @@ local function getRow(list, i)
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  row:SetScript("OnClick", function(self)
+    if not self.data then return end
+    list.selected = self.data
+    if IsShiftKeyDown() then searchInAH(self.data) end
+    ui.dirty = true
+  end)
+  row.sel = row:CreateTexture(nil, "BACKGROUND")
+  row.sel:SetAllPoints()
+  row.sel:SetColorTexture(0.2, 0.5, 1, 0.3)
   list.rows[i] = row
   return row
 end
@@ -637,6 +755,7 @@ local function refreshList(list)
     row.cols.vendor:SetText(coin(d.vendorEach))
     row.cols.profit:SetText(coin(d.profit))
     row.cols.left:SetText(d.timeLeft or "")
+    if list.selected == d then row.sel:Show() else row.sel:Hide() end
     row:Show()
   end
   for i = n + 1, #list.rows do list.rows[i]:Hide() end
@@ -732,6 +851,8 @@ local probeEvents = {
   "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", "AUCTION_HOUSE_BROWSE_RESULTS_ADDED",
   "ITEM_SEARCH_RESULTS_UPDATED", "COMMODITY_SEARCH_RESULTS_UPDATED",
   "AUCTION_HOUSE_THROTTLED_SYSTEM_READY", "GET_ITEM_INFO_RECEIVED",
+  "COMMODITY_PRICE_UPDATED", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED",
+  "AUCTION_HOUSE_SHOW_ERROR",
 }
 
 local noisy = {
@@ -740,7 +861,7 @@ local noisy = {
   COMMODITY_SEARCH_RESULTS_UPDATED = true, AUCTION_HOUSE_THROTTLED_SYSTEM_READY = true,
 }
 
-ev:SetScript("OnEvent", function(self, e, a1)
+ev:SetScript("OnEvent", function(self, e, a1, a2)
   if e == "ADDON_LOADED" then
     if not a1 or string.lower(a1) ~= "scrooge" then return end
     if type(ScroogeLog) ~= "table" then ScroogeLog = {} end
@@ -751,7 +872,7 @@ ev:SetScript("OnEvent", function(self, e, a1)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.1.2 loaded. Type /scrooge.")
+    print("Scrooge 0.2.0 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_SHOW" then ahShown = true
@@ -760,6 +881,10 @@ ev:SetScript("OnEvent", function(self, e, a1)
     if ds.active then finishDealScan("Auction house closed") end
   end
   if e == "GET_ITEM_INFO_RECEIVED" then ui.dirty = true end
+  if e == "COMMODITY_PRICE_UPDATED" then onCommodityPrice(a1, a2 or 0)
+  elseif e == "COMMODITY_PURCHASE_SUCCEEDED" then onCommodityDone(true)
+  elseif e == "COMMODITY_PURCHASE_FAILED" then onCommodityDone(false)
+  elseif e == "AUCTION_HOUSE_SHOW_ERROR" then print("Scrooge: auction house error " .. tostring(a1)) end
   if not noisy[e] and not ds.active then log("Event fired: " .. e) end
   if ds.active then
     local ok, err = pcall(dsOnEvent, e, a1)
