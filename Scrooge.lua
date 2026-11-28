@@ -288,6 +288,8 @@ end
 
 local function finishDealScan(msg)
   ds.active = false
+  ds.paused = false
+  if ui.pauseBtn then ui.pauseBtn:SetText("Pause") end
   setStatus(msg)
   log("=== Deal scan: " .. msg .. " ===")
   ui.dirty = true
@@ -472,6 +474,7 @@ local function dsTick()
       setStatus("Loading item data (" .. unknown .. " left)...")
     end
   elseif ds.phase == "search" then
+    if ds.paused and not ds.cur then return end
     if ds.cur then
       if now - ds.cur.sentAt > SEARCH_TIMEOUT then
         if ds.cur.more > 0 then
@@ -616,9 +619,9 @@ end
 
 local function buyDeal(kind, d)
   if not ahOpen() then print("Scrooge: open the auction house first"); return end
-  if ds.active then print("Scrooge: wait for the scan to finish"); return end
   local name = rowName(d)
   if d.commodity then
+    if ds.active and not ds.paused then print("Scrooge: pause the scan first"); return end
     ds.commodity = { kind = kind, d = d }
     C_AuctionHouse.StartCommoditiesPurchase(d.itemId, 1)
     return
@@ -812,12 +815,20 @@ local function buildUI()
   close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
 
   makeButton("Scan AH", 20, -38, startDealScan, f, 100)
-  makeButton("Stop", 125, -38, function()
-    if ds.active then finishDealScan("Stopped") end
+  local pauseBtn
+  pauseBtn = makeButton("Pause", 125, -38, function()
+    if not ds.active then return end
+    ds.paused = not ds.paused
+    pauseBtn:SetText(ds.paused and "Resume" or "Pause")
+    if ds.paused then setStatus("Paused. Buy what you want, then press Resume.") end
   end, f, 70)
+  makeButton("Stop", 200, -38, function()
+    if ds.active then finishDealScan("Stopped") end
+  end, f, 60)
+  ui.pauseBtn = pauseBtn
   ui.status = f:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  ui.status:SetPoint("TOPLEFT", f, "TOPLEFT", 205, -44)
-  ui.status:SetWidth(460)
+  ui.status:SetPoint("TOPLEFT", f, "TOPLEFT", 270, -44)
+  ui.status:SetWidth(400)
   ui.status:SetJustifyH("LEFT")
   ui.status:SetText("Open the auction house and press Scan AH.")
 
@@ -872,7 +883,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.0 loaded. Type /scrooge.")
+    print("Scrooge 0.2.1 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_SHOW" then ahShown = true
