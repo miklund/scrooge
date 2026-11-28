@@ -8,6 +8,8 @@ local ui = {}
 local scan = { active = false }
 local auctions = {}
 local ahShown = false
+local ahSession = 0
+local pendingBuy
 local registered = {}
 
 ----------------------------------------------------------------------
@@ -278,6 +280,7 @@ local function addDeal(kind, row)
   local list = deals[kind]
   ds.seq = (ds.seq or 0) + 1
   row.seq = ds.seq
+  row.session = ahSession
   list[#list + 1] = row
   ui.dirty = true
 end
@@ -389,11 +392,11 @@ local function processItemResults()
       end
       if cost > 0 and cost < vendor and (buyout == 0 or cost < buyout) then
         addDeal("bid", { itemId = entry.id, link = r.itemLink, qty = qty, price = cost,
-          vendorEach = vendor, profit = (vendor - cost) * qty, timeLeft = left, auctionId = r.auctionID })
+          vendorEach = vendor, profit = (vendor - cost) * qty, timeLeft = left, auctionId = r.auctionID, key = entry.key })
       end
       if buyout > 0 and buyout < vendor then
         addDeal("buyout", { itemId = entry.id, link = r.itemLink, qty = qty, price = buyout,
-          vendorEach = vendor, profit = (vendor - buyout) * qty, timeLeft = left, auctionId = r.auctionID })
+          vendorEach = vendor, profit = (vendor - buyout) * qty, timeLeft = left, auctionId = r.auctionID, key = entry.key })
       end
     end
   end
@@ -605,6 +608,14 @@ local function searchInAH(d)
   if ok then print("Scrooge: searching for " .. name) else print("Scrooge: could not drive the auction house search for " .. name) end
 end
 
+local function placeDeal(kind, d)
+  local what, amount = "Buy out", d.price
+  if kind == "bid" then what, amount = "Bid on", d.minBidNext or d.price end
+  C_AuctionHouse.PlaceBid(d.auctionId, amount)
+  removeDeal(kind, d)
+  print("Scrooge: " .. what:lower() .. " sent for " .. rowName(d) .. " x" .. d.qty .. " at " .. coin(amount))
+end
+
 local function buyDeal(kind, d)
   if not ahOpen() then print("Scrooge: open the auction house first"); return end
   local name = rowName(d)
@@ -615,15 +626,44 @@ local function buyDeal(kind, d)
     return
   end
   if not d.auctionId then print("Scrooge: no auction id for this row"); return end
-  local what, amount
-  if kind == "buyout" then
-    what, amount = "Buy out", d.price
-  else
-    what, amount = "Bid on", d.minBidNext or d.price
+  if d.session ~= ahSession then
+    if not d.key then print("Scrooge: row is stale, rescan"); return end
+    pendingBuy = { kind = kind, d = d, sentAt = GetTime() }
+    print("Scrooge: re-checking " .. name .. " after reopening the auction house...")
+    sendSearch(d.key)
+    return
   end
-  C_AuctionHouse.PlaceBid(d.auctionId, amount)
-  removeDeal(kind, d)
-  print("Scrooge: " .. what:lower() .. " sent for " .. name .. " x" .. d.qty .. " at " .. coin(amount))
+  placeDeal(kind, d)
+end
+
+-- Auction IDs change when the AH is reopened, so find the same auction again before buying.
+local function onRecheckResults(key)
+  local p = pendingBuy
+  if not p or not p.d.key or key.itemID ~= p.d.key.itemID then return end
+  pendingBuy = nil
+  local d = p.d
+  local n = C_AuctionHouse.GetNumItemSearchResults(p.d.key) or 0
+  for i = 1, n do
+    local r = C_AuctionHouse.GetItemSearchResultInfo(p.d.key, i)
+    if r and not r.containsOwnerItem and (r.quantity or 1) == d.qty then
+      local buyout, minBid = r.buyoutAmount or 0, r.minBid or 0
+      local hit
+      if p.kind == "buyout" then hit = buyout == d.price
+      else
+        local b = r.bidAmount or 0
+        local cost = minBid
+        if b > 0 then cost = b + math.max(1, math.floor(b * BID_INCREMENT)) end
+        hit = cost == d.price
+      end
+      if hit then
+        d.auctionId, d.session = r.auctionID, ahSession
+        placeDeal(p.kind, d)
+        return
+      end
+    end
+  end
+  print("Scrooge: that auction is gone, removed from the list")
+  removeDeal(p.kind, d)
 end
 
 local function onCommodityPrice(unitPrice, totalPrice)
@@ -870,10 +910,17 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.2 loaded. Type /scrooge.")
+    print("Scrooge 0.2.3 loaded. Type /scrooge.")
     return
   end
-  if e == "AUCTION_HOUSE_SHOW" then ahShown = true
+  if e == "ITEM_SEARCH_RESULTS_UPDATED" and pendingBuy then
+    local ok, err = pcall(onRecheckResults, a1)
+    if not ok then log("ERROR: " .. tostring(err)); pendingBuy = nil end
+  end
+  if e == "AUCTION_HOUSE_SHOW" then
+    ahShown = true
+    ahSession = ahSession + 1
+    if not ds.active then setStatus("Auction house open. Old rows are re-checked when you buy.") end
   elseif e == "AUCTION_HOUSE_CLOSED" then
     ahShown = false
     if ds.active then finishDealScan("Auction house closed") end

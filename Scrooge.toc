@@ -2,7 +2,7 @@
 ## Title: Scrooge
 ## Notes: Finds auctions that can be bought or bid on below the vendor price
 ## Author: miklund
-## Version: 0.2.2
+## Version: 0.2.3
 ## SavedVariables: ScroogeLog, ScroogeDB
 
 Scrooge.lua
