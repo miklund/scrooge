@@ -398,7 +398,8 @@ local function processItemResults()
         log("Stack sample: item " .. entry.id .. " qty=" .. qty .. " minBid=" .. minBid .. " bidAmount=" ..
           bidAmt .. " buyout=" .. buyout .. " vendor each=" .. vendor)
       end
-      if cost > 0 and cost < vendor and (buyout == 0 or cost < buyout) then
+      local mine = r.bidder ~= nil and r.bidder == UnitGUID("player")
+      if not mine and cost > 0 and cost < vendor and (buyout == 0 or cost < buyout) then
         addDeal("bid", { itemId = entry.id, link = r.itemLink, qty = qty, price = cost,
           vendorEach = vendor, profit = (vendor - cost) * qty, timeLeft = left, auctionId = r.auctionID, key = entry.key })
       end
@@ -666,7 +667,7 @@ local function onRecheckResults(key)
   local n = C_AuctionHouse.GetNumItemSearchResults(p.d.key) or 0
   for i = 1, n do
     local r = C_AuctionHouse.GetItemSearchResultInfo(p.d.key, i)
-    if r and not r.containsOwnerItem and (r.quantity or 1) == d.qty then
+    if r and not r.containsOwnerItem and not (p.kind == "bid" and r.bidder and r.bidder == UnitGUID("player")) and (r.quantity or 1) == d.qty then
       local buyout, minBid = r.buyoutAmount or 0, r.minBid or 0
       local hit
       if p.kind == "buyout" then hit = buyout == d.price
@@ -936,7 +937,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.5 loaded. Type /scrooge.")
+    print("Scrooge 0.3.6 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" and lastPlaced and GetTime() - lastPlace < 10 then
