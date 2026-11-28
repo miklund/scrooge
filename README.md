@@ -155,3 +155,7 @@ Closing the auction house during the item-search phase pauses the scan; reopen i
 ## /scrooge sellall
 
 With a vendor window open, sells every item in your bags (backpack and 4 bag slots) that has a vendor value, including gear and consumables. There is no confirmation and no exclusion list. Items bought back via the vendor buyback tab can be recovered.
+
+## Sorting
+
+Deals are sorted by return on the gold spent (profit divided by what the purchase costs), so a small cheap deal beats a bigger one that ties up your money. Deals costing more than the gold you currently have are listed last. The order updates on refresh (rescan or buy to re-sort).

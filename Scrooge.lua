@@ -287,8 +287,14 @@ local function addDeal(kind, row)
 end
 
 local function sortDeals()
+  local function cost(d) return d.price * (d.commodity and 1 or d.qty) end
+  -- Best return per copper spent first; deals you cannot afford right now go last.
+  local money = GetMoney and GetMoney() or math.huge
   local byProfit = function(a, b)
-    if a.profit ~= b.profit then return a.profit > b.profit end
+    local aa, ab = cost(a) <= money, cost(b) <= money
+    if aa ~= ab then return aa end
+    local ra, rb = a.profit / cost(a), b.profit / cost(b)
+    if ra ~= rb then return ra > rb end
     return a.seq < b.seq
   end
   table.sort(deals.bid, byProfit)
@@ -560,11 +566,12 @@ end
 
 local ROW_H = 18
 local COLS = {
-  { key = "name", w = 200, label = "Item" },
-  { key = "qty", w = 80, label = "Qty" },
-  { key = "price", w = 100, label = "Price each" },
-  { key = "vendor", w = 100, label = "Vendor each" },
-  { key = "profit", w = 100, label = "Total profit" },
+  { key = "name", w = 170, label = "Item" },
+  { key = "qty", w = 60, label = "Qty" },
+  { key = "price", w = 95, label = "Price each" },
+  { key = "vendor", w = 95, label = "Vendor each" },
+  { key = "profit", w = 95, label = "Total profit" },
+  { key = "roi", w = 55, label = "Return" },
   { key = "left", w = 50, label = "Left" },
 }
 
@@ -792,6 +799,7 @@ local function refreshList(list)
     row.cols.price:SetText(coin(d.price))
     row.cols.vendor:SetText(coin(d.vendorEach))
     row.cols.profit:SetText(coin(d.profit))
+    row.cols.roi:SetText(string.format("%.0f%%", d.profit / (d.price * (d.commodity and 1 or d.qty)) * 100))
     row.cols.left:SetText(d.timeLeft or "")
     if list.selected == d then row.sel:Show() else row.sel:Hide() end
     row:Show()
@@ -919,7 +927,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.0 loaded. Type /scrooge.")
+    print("Scrooge 0.3.1 loaded. Type /scrooge.")
     return
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
