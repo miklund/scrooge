@@ -639,7 +639,10 @@ local function buyDeal(kind, d)
   local name = rowName(d)
   if d.commodity then
     if ds.active and not ds.paused then print("Scrooge: pause the scan first"); return end
-    ds.commodity = { kind = kind, d = d }
+    if ds.commodity then print("Scrooge: still waiting for the previous purchase"); return end
+    if not throttleReady() then print("Scrooge: auction house is busy, try again in a second"); return end
+    ds.commodity = { kind = kind, d = d, sentAt = GetTime() }
+    print("Scrooge: requesting price for " .. name .. "...")
     C_AuctionHouse.StartCommoditiesPurchase(d.itemId, 1)
     return
   end
@@ -912,7 +915,7 @@ local probeEvents = {
   "ITEM_SEARCH_RESULTS_UPDATED", "COMMODITY_SEARCH_RESULTS_UPDATED",
   "AUCTION_HOUSE_THROTTLED_SYSTEM_READY", "GET_ITEM_INFO_RECEIVED",
   "COMMODITY_PRICE_UPDATED", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED",
-  "AUCTION_HOUSE_SHOW_ERROR", "UI_ERROR_MESSAGE", "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED",
+  "AUCTION_HOUSE_SHOW_ERROR", "UI_ERROR_MESSAGE", "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", "COMMODITY_PRICE_UNAVAILABLE",
   "AUCTION_HOUSE_SHOW_NOTIFICATION", "AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION", "AUCTION_HOUSE_AUCTION_WON",
 }
 
@@ -933,7 +936,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.4 loaded. Type /scrooge.")
+    print("Scrooge 0.3.5 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" and lastPlaced and GetTime() - lastPlace < 10 then
@@ -945,6 +948,11 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     ui.dirty = true
   elseif (e == "AUCTION_HOUSE_SHOW_NOTIFICATION" or e == "AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION" or e == "AUCTION_HOUSE_AUCTION_WON") and GetTime() - (lastPlace or 0) < 10 then
     print("Scrooge: auction house replied " .. e .. " " .. tostring(a1) .. " " .. tostring(a2))
+  end
+  if e == "COMMODITY_PRICE_UNAVAILABLE" and ds.commodity then
+    print("Scrooge: no price available for " .. rowName(ds.commodity.d) .. " (sold out?), removed")
+    removeDeal(ds.commodity.kind, ds.commodity.d)
+    ds.commodity = nil
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
   if e == "ITEM_SEARCH_RESULTS_UPDATED" and pendingBuy then
@@ -989,6 +997,11 @@ end)
 
 ev:SetScript("OnUpdate", function()
   onUpdate()
+  if ds.commodity and GetTime() - ds.commodity.sentAt > 6 then
+    print("Scrooge: no reply from the auction house for " .. rowName(ds.commodity.d) .. ", purchase abandoned")
+    pcall(C_AuctionHouse.CancelCommoditiesPurchase)
+    ds.commodity = nil
+  end
   if placeQueue[1] and throttleReady() then
     local q = table.remove(placeQueue, 1)
     placeDeal(q.kind, q.d)
