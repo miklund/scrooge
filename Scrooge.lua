@@ -346,8 +346,8 @@ local function buildQueue()
       if isCommodity(key) then
         local unit = r.minPrice
         if unit and unit > 0 and unit < vendor then
-          addDeal("buyout", { itemId = id, qty = 1, qtyText = "each (" .. tostring(r.totalQuantity) .. ")",
-            price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-", commodity = true })
+          addDeal("buyout", { itemId = id, qty = 1, available = r.totalQuantity or 1, commodity = true,
+            price = unit, vendorEach = vendor, profit = vendor - unit, timeLeft = "-" })
         end
       else
         queue[#queue + 1] = { key = key, id = id, vendor = vendor, ratio = (r.minPrice or 0) / vendor }
@@ -430,7 +430,8 @@ local function onCommodityResults(id)
   if not cur or id ~= cur.entry.id then return end
   local info = C_AuctionHouse.GetCommoditySearchResultInfo(id, 1)
   if info and info.unitPrice and info.unitPrice < cur.entry.vendor then
-    addDeal("buyout", { itemId = id, qty = 1, qtyText = "each", price = info.unitPrice,
+    local avail = C_AuctionHouse.GetCommoditySearchResultsQuantity and C_AuctionHouse.GetCommoditySearchResultsQuantity(id) or 1
+    addDeal("buyout", { itemId = id, qty = 1, available = avail, commodity = true, price = info.unitPrice,
       vendorEach = cur.entry.vendor, profit = cur.entry.vendor - info.unitPrice, timeLeft = "-" })
   end
   ds.cur = nil
@@ -688,6 +689,7 @@ local function onCommodityPrice(unitPrice, totalPrice)
   if unitPrice >= d.vendorEach then
     print("Scrooge: price is now " .. coin(unitPrice) .. ", no longer below vendor price. Cancelled.")
     pcall(C_AuctionHouse.CancelCommoditiesPurchase)
+    removeDeal(c.kind, d)
     ds.commodity = nil
     return
   end
@@ -699,7 +701,8 @@ local function onCommodityDone(ok)
   if not c then return end
   ds.commodity = nil
   if ok then
-    removeDeal(c.kind, c.d)
+    c.d.available = (c.d.available or 1) - 1
+    if c.d.available <= 0 then removeDeal(c.kind, c.d) else ui.dirty = true end
     print("Scrooge: bought 1 x " .. rowName(c.d))
   else print("Scrooge: purchase failed") end
 end
@@ -795,7 +798,7 @@ local function refreshList(list)
     local row = getRow(list, i)
     row.data = d
     row.cols.name:SetText(rowName(d))
-    row.cols.qty:SetText(d.qtyText or ("x" .. d.qty))
+    row.cols.qty:SetText(d.available and ("each (" .. d.available .. ")") or ("x" .. d.qty))
     row.cols.price:SetText(coin(d.price))
     row.cols.vendor:SetText(coin(d.vendorEach))
     row.cols.profit:SetText(coin(d.profit))
@@ -927,7 +930,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.1 loaded. Type /scrooge.")
+    print("Scrooge 0.3.2 loaded. Type /scrooge.")
     return
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
