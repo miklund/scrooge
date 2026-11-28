@@ -142,7 +142,7 @@ Output is shown in the window and also saved to `WTF/Account/<ACCOUNT>/SavedVari
 
 Click a row to select it, then use the buttons under the list:
 
-- **Bid / Buyout** places the bid (next minimum bid) or buys out that exact auction after a confirmation popup, then removes the row. Commodity rows (no single auction) buy 1 unit via the commodity purchase flow and are cancelled if the price is no longer below vendor.
+- **Bid / Buyout** places the bid (next minimum bid) or buys out that exact auction immediately (no confirmation), removes the row and selects the next one. Commodity rows (no single auction) buy 1 unit via the commodity purchase flow and are cancelled if the price is no longer below vendor.
 - **Find in AH** (or shift-click the row) fills the auction house search box with the item name and searches.
 - **Done** removes the row without buying.
 

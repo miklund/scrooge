@@ -276,12 +276,17 @@ end
 
 local function addDeal(kind, row)
   local list = deals[kind]
+  ds.seq = (ds.seq or 0) + 1
+  row.seq = ds.seq
   list[#list + 1] = row
   ui.dirty = true
 end
 
 local function sortDeals()
-  local byProfit = function(a, b) return a.profit > b.profit end
+  local byProfit = function(a, b)
+    if a.profit ~= b.profit then return a.profit > b.profit end
+    return a.seq < b.seq
+  end
   table.sort(deals.bid, byProfit)
   table.sort(deals.buyout, byProfit)
 end
@@ -578,7 +583,12 @@ end
 local function removeDeal(kind, d)
   local list = deals[kind]
   for i = 1, #list do
-    if list[i] == d then table.remove(list, i); break end
+    if list[i] == d then
+      table.remove(list, i)
+      local ul = kind == "bid" and ui.bidList or ui.buyoutList
+      if ul and ul.selected == d then ul.selected = list[i] or list[i - 1] end
+      break
+    end
   end
   ui.dirty = true
 end
@@ -593,28 +603,6 @@ local function searchInAH(d)
     f.SearchBar:StartSearch()
   end)
   if ok then print("Scrooge: searching for " .. name) else print("Scrooge: could not drive the auction house search for " .. name) end
-end
-
-local pending
-
-StaticPopupDialogs["SCROOGE_CONFIRM"] = {
-  text = "%s",
-  button1 = "Yes",
-  button2 = "Cancel",
-  timeout = 0,
-  whileDead = true,
-  hideOnEscape = true,
-  OnAccept = function() if pending then local f = pending; pending = nil; f() end end,
-  OnCancel = function()
-    pending = nil
-    if C_AuctionHouse.CancelCommoditiesPurchase and ds.commodity then pcall(C_AuctionHouse.CancelCommoditiesPurchase) end
-    ds.commodity = nil
-  end,
-}
-
-local function confirm(text, fn)
-  pending = fn
-  StaticPopup_Show("SCROOGE_CONFIRM", text)
 end
 
 local function buyDeal(kind, d)
@@ -633,11 +621,9 @@ local function buyDeal(kind, d)
   else
     what, amount = "Bid on", d.minBidNext or d.price
   end
-  confirm(what .. " " .. name .. " x" .. d.qty .. " for " .. coin(amount) .. "?\nVendor value each: " .. coin(d.vendorEach), function()
-    C_AuctionHouse.PlaceBid(d.auctionId, amount)
-    removeDeal(kind, d)
-    print("Scrooge: " .. what:lower() .. " sent for " .. name .. " at " .. coin(amount))
-  end)
+  C_AuctionHouse.PlaceBid(d.auctionId, amount)
+  removeDeal(kind, d)
+  print("Scrooge: " .. what:lower() .. " sent for " .. name .. " x" .. d.qty .. " at " .. coin(amount))
 end
 
 local function onCommodityPrice(unitPrice, totalPrice)
@@ -650,16 +636,17 @@ local function onCommodityPrice(unitPrice, totalPrice)
     ds.commodity = nil
     return
   end
-  confirm("Buy 1 x " .. rowName(d) .. " for " .. coin(totalPrice) .. "?\nVendor value: " .. coin(d.vendorEach), function()
-    C_AuctionHouse.ConfirmCommoditiesPurchase(d.itemId, 1)
-  end)
+  C_AuctionHouse.ConfirmCommoditiesPurchase(d.itemId, 1)
 end
 
 local function onCommodityDone(ok)
   local c = ds.commodity
   if not c then return end
   ds.commodity = nil
-  if ok then print("Scrooge: bought 1 x " .. rowName(c.d)) else print("Scrooge: purchase failed") end
+  if ok then
+    removeDeal(c.kind, c.d)
+    print("Scrooge: bought 1 x " .. rowName(c.d))
+  else print("Scrooge: purchase failed") end
 end
 
 local function createList(parent, kind, emptyText)
@@ -883,7 +870,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.2.1 loaded. Type /scrooge.")
+    print("Scrooge 0.2.2 loaded. Type /scrooge.")
     return
   end
   if e == "AUCTION_HOUSE_SHOW" then ahShown = true
