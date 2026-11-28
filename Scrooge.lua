@@ -572,8 +572,8 @@ local COLS = {
   { key = "price", w = 95, label = "Price each" },
   { key = "vendor", w = 95, label = "Vendor each" },
   { key = "profit", w = 95, label = "Total profit" },
-  { key = "roi", w = 55, label = "Return" },
-  { key = "left", w = 50, label = "Left" },
+  { key = "roi", w = 70, label = "Per 1g spent" },
+  { key = "left", w = 45, label = "Left" },
 }
 
 local function coin(c)
@@ -798,11 +798,11 @@ local function refreshList(list)
     local row = getRow(list, i)
     row.data = d
     row.cols.name:SetText(rowName(d))
-    row.cols.qty:SetText(d.available and ("each (" .. d.available .. ")") or ("x" .. d.qty))
+    row.cols.qty:SetText(tostring(d.available or d.qty))
     row.cols.price:SetText(coin(d.price))
     row.cols.vendor:SetText(coin(d.vendorEach))
     row.cols.profit:SetText(coin(d.profit))
-    row.cols.roi:SetText(string.format("%.0f%%", d.profit / (d.price * (d.commodity and 1 or d.qty)) * 100))
+    row.cols.roi:SetText(coin(math.floor(d.profit / (d.price * (d.commodity and 1 or d.qty)) * 10000)))
     row.cols.left:SetText(d.timeLeft or "")
     if list.selected == d then row.sel:Show() else row.sel:Hide() end
     row:Show()
@@ -930,7 +930,7 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.2 loaded. Type /scrooge.")
+    print("Scrooge 0.3.3 loaded. Type /scrooge.")
     return
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end

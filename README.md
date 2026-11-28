@@ -158,4 +158,4 @@ With a vendor window open, sells every item in your bags (backpack and 4 bag slo
 
 ## Sorting
 
-Deals are sorted by return on the gold spent (profit divided by what the purchase costs), so a small cheap deal beats a bigger one that ties up your money. Deals costing more than the gold you currently have are listed last. The order updates on refresh (rescan or buy to re-sort).
+Deals are sorted by return on the gold spent (profit divided by what the purchase costs), so a small cheap deal beats a bigger one that ties up your money. Deals costing more than the gold you currently have are listed last. The "Per 1g spent" column shows the profit you would make for every 1g invested in that deal. The order updates on refresh (rescan or buy to re-sort).
