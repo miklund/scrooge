@@ -11,6 +11,7 @@ local ahShown = false
 local ahSession = 0
 local pendingBuy
 local lastPlace
+local lastPlaced
 local registered = {}
 
 ----------------------------------------------------------------------
@@ -627,6 +628,7 @@ local function placeDeal(kind, d)
     return
   end
   lastPlace = GetTime()
+  lastPlaced = { kind = kind, d = d }
   C_AuctionHouse.PlaceBid(d.auctionId, amount)
   removeDeal(kind, d)
   print("Scrooge: " .. what:lower() .. " sent for " .. rowName(d) .. " x" .. d.qty .. " at " .. coin(amount))
@@ -910,7 +912,8 @@ local probeEvents = {
   "ITEM_SEARCH_RESULTS_UPDATED", "COMMODITY_SEARCH_RESULTS_UPDATED",
   "AUCTION_HOUSE_THROTTLED_SYSTEM_READY", "GET_ITEM_INFO_RECEIVED",
   "COMMODITY_PRICE_UPDATED", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED",
-  "AUCTION_HOUSE_SHOW_ERROR", "UI_ERROR_MESSAGE",
+  "AUCTION_HOUSE_SHOW_ERROR", "UI_ERROR_MESSAGE", "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED",
+  "AUCTION_HOUSE_SHOW_NOTIFICATION", "AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION", "AUCTION_HOUSE_AUCTION_WON",
 }
 
 local noisy = {
@@ -930,8 +933,18 @@ ev:SetScript("OnEvent", function(self, e, a1, a2)
     for _, name in ipairs(probeEvents) do
       registered[name] = pcall(ev.RegisterEvent, ev, name)
     end
-    print("Scrooge 0.3.3 loaded. Type /scrooge.")
+    print("Scrooge 0.3.4 loaded. Type /scrooge.")
     return
+  end
+  if e == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" and lastPlaced and GetTime() - lastPlace < 10 then
+    local p = lastPlaced
+    lastPlaced = nil
+    print("Scrooge: the server dropped the purchase, retrying")
+    table.insert(deals[p.kind], p.d)
+    placeQueue[#placeQueue + 1] = { kind = p.kind, d = p.d }
+    ui.dirty = true
+  elseif (e == "AUCTION_HOUSE_SHOW_NOTIFICATION" or e == "AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION" or e == "AUCTION_HOUSE_AUCTION_WON") and GetTime() - (lastPlace or 0) < 10 then
+    print("Scrooge: auction house replied " .. e .. " " .. tostring(a1) .. " " .. tostring(a2))
   end
   if e == "UI_ERROR_MESSAGE" and a2 and GetTime() - (lastPlace or 0) < 5 then print("Scrooge: server says: " .. tostring(a2)) end
   if e == "ITEM_SEARCH_RESULTS_UPDATED" and pendingBuy then
